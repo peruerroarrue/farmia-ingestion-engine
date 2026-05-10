@@ -91,9 +91,20 @@ class BatchReader:
         fmt = source.format
 
         if fmt == "binaryFile":
+            from pyspark.sql.types import (
+                StructType, StructField, StringType,
+                LongType, TimestampType, BinaryType
+            )
+            binary_schema = StructType([
+                StructField("path", StringType()),
+                StructField("modificationTime", TimestampType()),
+                StructField("length", LongType()),
+                StructField("content", BinaryType()),
+            ])
             return (
                 self.spark.readStream
                 .format("binaryFile")
+                .schema(binary_schema)
                 .options(**source.options)
                 .load(landing_path)
             )
