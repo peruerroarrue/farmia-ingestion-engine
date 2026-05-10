@@ -15,3 +15,9 @@ __pycache__/
 
 # Databricks
 .databricks/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+src/__pycache__/
