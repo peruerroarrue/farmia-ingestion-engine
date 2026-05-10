@@ -17,15 +17,22 @@
 # MAGIC ```
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 0. Intalación de confluent-kafka
 
 # COMMAND ----------
 
-%pip install confluent-kafka
+# MAGIC %pip install confluent-kafka
+# MAGIC %pip install confluent-kafka httpx
+# MAGIC
+
+# COMMAND ----------
+
 dbutils.library.restartPython()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Setup — rutas e imports
 
@@ -52,6 +59,7 @@ print(f"✅ Repo root añadido al path: {REPO_ROOT}")
 print(f"✅ Spark version: {spark.version}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Carga de configuración
 
@@ -68,6 +76,7 @@ print(f"  raw     : {env.raw_path}")
 print(f"  bronze  : {env.bronze_path}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Ejecución del motor
 
@@ -76,7 +85,6 @@ print(f"  bronze  : {env.bronze_path}")
 from src.engine import IngestionEngine
 
 # Configurar catálogo por defecto del workspace
-spark.conf.set("spark.databricks.unity.catalog.enabled", "true")
 spark.sql("USE CATALOG workspace")
 spark.sql("USE SCHEMA default")
 
@@ -86,10 +94,12 @@ engine = IngestionEngine(env=env, datasets=datasets, spark=spark)
 engine.run()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Verificación — contenido de bronze
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.1 Ventas online (JSON → Delta)
 
@@ -102,6 +112,7 @@ print(f"Registros ingestados: {df_sales.count()}")
 display(df_sales.orderBy("_ingested_at").limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.2 Inventario (CSV → Delta)
 
@@ -114,6 +125,7 @@ print(f"Registros ingestados: {df_stock.count()}")
 display(df_stock.limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.3 Logística (Parquet → Delta)
 
@@ -126,6 +138,7 @@ print(f"Registros ingestados: {df_shipments.count()}")
 display(df_shipments.limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.4 Imágenes de campo (BinaryFile → Delta)
 
@@ -138,6 +151,7 @@ print(f"Imágenes ingestadas: {df_images.count()}")
 display(df_images.select("path", "_ingested_at").limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.5 Sensores IoT (JSON → Delta)
 
@@ -150,6 +164,7 @@ print(f"Registros ingestados: {df_sensors.count()}")
 display(df_sensors.limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 4.6 Eventos de clientes (Avro → Delta)
 
@@ -162,6 +177,7 @@ print(f"Registros ingestados: {df_events.count()}")
 display(df_events.limit(5))
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Resumen de metadatos de ingesta
 

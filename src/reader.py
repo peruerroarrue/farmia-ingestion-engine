@@ -132,7 +132,7 @@ class BatchReader:
 
         # Nombre del fichero origen (no disponible en binaryFile, ya tiene 'path')
         if source.format != "binaryFile":
-            df = df.withColumn("_ingested_filename", F.input_file_name())
+            df = df.withColumn("_ingested_filename", F.col("_metadata.file_path"))
 
         # Columna de fecha para particionado
         df = df.withColumn("ingestion_date", F.to_date(F.col("_ingested_at")))

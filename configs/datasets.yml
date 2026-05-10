@@ -84,23 +84,20 @@ datasets:
 
   # 5. Sensores IoT — Kafka, streaming, JSON
   - datasource: iot
-      dataset: sensor_readings
-      source:
-        type: batch
-        format: json
-        use_autoloader: false
-        partition_by:
-          - field_zone
+    dataset: sensor_readings
+    source:
+      type: batch
+      format: json
+      use_autoloader: false
+      partition_by:
+        - field_zone
 
   # 6. Eventos de clientes — Kafka, streaming, Avro
   - datasource: mobile
     dataset: customer_events
     source:
-      type: streaming
-      topic_pattern: "customer_events"
-      key_format: string
-      value_format: avro
-      value_subject: "customer_events-value"
-      starting_offsets: earliest
+      type: batch
+      format: avro
+      use_autoloader: false
       partition_by:
         - event_type
