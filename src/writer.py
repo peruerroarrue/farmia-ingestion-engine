@@ -94,25 +94,20 @@ class BronzeWriter:
     # ------------------------------------------------------------------
 
     def _write_batch(
-        self,
-        batch_df: DataFrame,
-        bronze_path: str,
-        source: BatchSourceConfig,
+            self,
+            batch_df: DataFrame,
+            bronze_path: str,
+            source: BatchSourceConfig,
     ) -> None:
         """Escribe un microbatch en bronze en formato Delta."""
-        batch_df.persist()
-        try:
-            (
-                batch_df.write
-                .format("delta")
-                .mode("append")
-                .option("mergeSchema", str(source.schema_evolution).lower())
-                .save(bronze_path)
-            )
-            logger.info(f"[BronzeWriter] Microbatch escrito en {bronze_path} "
-                        f"({batch_df.count()} registros)")
-        finally:
-            batch_df.unpersist()
+        (
+            batch_df.write
+            .format("delta")
+            .mode("append")
+            .option("mergeSchema", str(source.schema_evolution).lower())
+            .save(bronze_path)
+        )
+        logger.info(f"[BronzeWriter] Microbatch escrito en {bronze_path}")
 
     # ------------------------------------------------------------------
     # Archivado de ficheros: landing → raw
