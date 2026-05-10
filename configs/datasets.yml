@@ -10,9 +10,9 @@
 #   - Azure          → rutas abfss://...
 # ---------------------------------------------------------------------------
 environment:
-  landing_path: "/tmp/farmia/landing"
-  raw_path: "/tmp/farmia/raw"
-  bronze_path: "/tmp/farmia/bronze"
+  landing_path: "/Volumes/main/default/landing"
+  raw_path: "/Volumes/main/default/raw"
+  bronze_path: "/Volumes/main/default/bronze"
 
   # Kafka (solo necesario para datasets streaming)
   # kafka_bootstrap_servers: "pkc-xxxx.confluent.cloud:9092"

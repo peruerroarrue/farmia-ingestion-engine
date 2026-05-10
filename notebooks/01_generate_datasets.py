@@ -3,6 +3,7 @@
 # crea el motor automáticamente. En Databricks 'spark' ya existe.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Generador de Datasets Sintéticos — FarmIA
 # MAGIC
@@ -20,11 +21,16 @@
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE SCHEMA IF NOT EXISTS workspace.default;
+# MAGIC CREATE VOLUME IF NOT EXISTS workspace.default.landing;
+# MAGIC CREATE VOLUME IF NOT EXISTS workspace.default.raw;
+# MAGIC CREATE VOLUME IF NOT EXISTS workspace.default.bronze;
+
+# COMMAND ----------
+
 import os
 from pathlib import Path
-os.environ["SPARK_LOCAL_DIRS"] = "C:/tmp/spark"
-os.environ["TMPDIR"] = "C:/tmp/spark"
-Path("C:/tmp/spark").mkdir(parents=True, exist_ok=True)
 import json
 import random
 import struct
@@ -64,11 +70,12 @@ except NameError:
 # Rutas base — ajusta según tu entorno
 # En Databricks Free Edition: "dbfs:/farmia/landing"
 # En local:                   "/tmp/farmia/landing"
-# ------------------------------------------------------------------
-LANDING_BASE = "/tmp/farmia/landing"
+
+LANDING_BASE = "/Volumes/workspace/default/landing"
 N_RECORDS = 200  # registros por dataset
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Utilidades
 
@@ -102,6 +109,7 @@ def ts(days_back: int = 30) -> str:
     return random_timestamp(days_back).isoformat()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Ventas online — JSON
 
@@ -144,6 +152,7 @@ with open(f"{out}/sales_orders_002.json", "w", encoding="utf-8") as f:
 print(f"✅ ecommerce/sales_orders — {N_RECORDS} registros en {out}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Inventario — CSV
 
@@ -180,6 +189,7 @@ stock_df.coalesce(1).write.mode("overwrite").option("header", True).csv(out)
 print(f"✅ inventory/stock — {N_RECORDS} registros en {out}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Logística / Envíos — Parquet
 
@@ -222,6 +232,7 @@ shipments_df.coalesce(1).write.mode("overwrite").parquet(out)
 print(f"✅ logistics/shipments — {N_RECORDS} registros en {out}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Imágenes de campo — BinaryFile (JPG sintético)
 
@@ -263,6 +274,7 @@ for i in range(1, n_images + 1):
 print(f"✅ field_ops/crop_images — {n_images} imágenes JPG en {images_dir}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5 & 6. Datasets Streaming (Kafka)
 # MAGIC
@@ -277,6 +289,7 @@ print(f"✅ field_ops/crop_images — {n_images} imágenes JPG en {images_dir}")
 # MAGIC streaming en datasets.yml y el motor los procesa automáticamente.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 5a. Sensor readings — JSON (simulado en landing para tests)
 
@@ -302,6 +315,7 @@ with open(f"{out}/sensor_readings_001.json", "w", encoding="utf-8") as f:
 print(f"✅ iot/sensor_readings — {N_RECORDS} registros JSON en {out}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### 5b. Customer events — Avro (simulado en landing para tests)
 
@@ -340,6 +354,7 @@ events_df.coalesce(1).write.mode("overwrite").format("avro").save(out)
 print(f"✅ mobile/customer_events — {N_RECORDS} registros Avro en {out}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Resumen de ficheros generados
 
