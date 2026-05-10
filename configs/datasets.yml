@@ -14,17 +14,15 @@ environment:
   raw_path: "/Volumes/workspace/default/raw"
   bronze_path: "/Volumes/workspace/default/bronze"
 
-  # Kafka (solo necesario para datasets streaming)
-  # kafka_bootstrap_servers: "pkc-xxxx.confluent.cloud:9092"
-  # kafka_security_protocol: "SASL_SSL"
-  # kafka_sasl_mechanism: "PLAIN"
-  # kafka_sasl_username: "tu_api_key"
-  # kafka_sasl_password: "tu_api_secret"
+  kafka_bootstrap_servers: "pkc-ewzgj.europe-west4.gcp.confluent.cloud:9092"
+  kafka_security_protocol: "SASL_SSL"
+  kafka_sasl_mechanism: "PLAIN"
+  kafka_sasl_username: "72W7PM24CJCTWRH2"
+  kafka_sasl_password: "cfltsvEciWV8AuqCryGOdRxlVjA6lB5BA2fyN2z0B5PldhcT3vfoWKssCCPDa5rg"
 
-  # Schema Registry (solo para datasets Avro con SR)
-  # schema_registry_url: "https://psrc-xxxx.confluent.cloud"
-  # schema_registry_username: "tu_sr_key"
-  # schema_registry_password: "tu_sr_secret"
+  schema_registry_url: "https://psrc-1yngo33.europe-west4.gcp.confluent.cloud"
+  schema_registry_username: "PPPWMUIGNS35DEYU"
+  schema_registry_password: "cflt1qIQ3L/qJgTyqiS4n7eGm/4NLoYqh76CZFQQuaDqR9fXF1aodF6xZsJYzXYg"
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -86,9 +84,15 @@ datasets:
   - datasource: iot
     dataset: sensor_readings
     source:
-      type: batch
-      format: json
-      use_autoloader: false
+      type: streaming
+      topic_pattern: "sensor_readings"
+      key_format: string
+      value_format: json
+      json_schema: >
+        sensor_id string, field_zone string, temperature double,
+        humidity double, soil_quality double, battery_level double,
+        read_at string
+      starting_offsets: earliest
       partition_by:
         - field_zone
 
@@ -96,8 +100,14 @@ datasets:
   - datasource: mobile
     dataset: customer_events
     source:
-      type: batch
-      format: avro
-      use_autoloader: false
+      type: streaming
+      topic_pattern: "customer_events"
+      key_format: string
+      value_format: json
+      json_schema: >
+        event_id string, customer_id long, event_type string,
+        platform string, session_id string, page_url string,
+        product_id long, duration_ms int, occurred_at string
+      starting_offsets: earliest
       partition_by:
         - event_type
