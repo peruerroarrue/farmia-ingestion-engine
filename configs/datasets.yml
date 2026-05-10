@@ -1,0 +1,111 @@
+# =============================================================================
+# Configuración completa de FarmIA Ingestion Engine
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Entorno de ejecución
+# Cambia las rutas según donde ejecutes:
+#   - Local/tests    → rutas absolutas del sistema de ficheros
+#   - Databricks FE  → rutas dbfs:/...
+#   - Azure          → rutas abfss://...
+# ---------------------------------------------------------------------------
+environment:
+  landing_path: "/tmp/farmia/landing"
+  raw_path: "/tmp/farmia/raw"
+  bronze_path: "/tmp/farmia/bronze"
+
+  # Kafka (solo necesario para datasets streaming)
+  # kafka_bootstrap_servers: "pkc-xxxx.confluent.cloud:9092"
+  # kafka_security_protocol: "SASL_SSL"
+  # kafka_sasl_mechanism: "PLAIN"
+  # kafka_sasl_username: "tu_api_key"
+  # kafka_sasl_password: "tu_api_secret"
+
+  # Schema Registry (solo para datasets Avro con SR)
+  # schema_registry_url: "https://psrc-xxxx.confluent.cloud"
+  # schema_registry_username: "tu_sr_key"
+  # schema_registry_password: "tu_sr_secret"
+
+# ---------------------------------------------------------------------------
+# Datasets
+# ---------------------------------------------------------------------------
+datasets:
+
+  # 1. Ventas online — JSON, batch
+  - datasource: ecommerce
+    dataset: sales_orders
+    source:
+      type: batch
+      format: json
+      use_autoloader: false        # true en Databricks
+      schema_hints: "order_id long, customer_id long, total_amount double, ordered_at timestamp"
+      schema_evolution: true
+      partition_by:
+        - ingestion_date
+
+  # 2. Inventario — CSV, batch
+  - datasource: inventory
+    dataset: stock
+    source:
+      type: batch
+      format: csv
+      use_autoloader: false
+      options:
+        header: "true"
+        delimiter: ","
+      schema_hints: "product_id long, quantity int, unit_cost double, updated_at timestamp"
+      schema_evolution: true
+      partition_by:
+        - ingestion_date
+
+  # 3. Proveedores/logística — Parquet, batch
+  - datasource: logistics
+    dataset: shipments
+    source:
+      type: batch
+      format: parquet
+      use_autoloader: false
+      schema_evolution: true
+      partition_by:
+        - ingestion_date
+
+  # 4. Imágenes de campo — binaryFile, batch
+  - datasource: field_ops
+    dataset: crop_images
+    source:
+      type: batch
+      format: binaryFile
+      use_autoloader: false
+      options:
+        pathGlobFilter: "*.jpg"
+        recursiveFileLookup: "true"
+      schema_evolution: false
+      partition_by: []
+
+  # 5. Sensores IoT — Kafka, streaming, JSON
+  - datasource: iot
+    dataset: sensor_readings
+    source:
+      type: streaming
+      topic_pattern: "sensor_readings"
+      key_format: string
+      value_format: json
+      json_schema: >
+        sensor_id string, field_zone string, temperature double,
+        humidity double, soil_quality double, read_at timestamp
+      starting_offsets: earliest
+      partition_by:
+        - field_zone
+
+  # 6. Eventos de clientes — Kafka, streaming, Avro
+  - datasource: mobile
+    dataset: customer_events
+    source:
+      type: streaming
+      topic_pattern: "customer_events"
+      key_format: string
+      value_format: avro
+      value_subject: "customer_events-value"
+      starting_offsets: earliest
+      partition_by:
+        - event_type
