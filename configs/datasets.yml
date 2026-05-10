@@ -10,9 +10,9 @@
 #   - Azure          → rutas abfss://...
 # ---------------------------------------------------------------------------
 environment:
-  landing_path: "/Volumes/main/default/landing"
-  raw_path: "/Volumes/main/default/raw"
-  bronze_path: "/Volumes/main/default/bronze"
+  landing_path: "/Volumes/workspace/default/landing"
+  raw_path: "/Volumes/workspace/default/raw"
+  bronze_path: "/Volumes/workspace/default/bronze"
 
   # Kafka (solo necesario para datasets streaming)
   # kafka_bootstrap_servers: "pkc-xxxx.confluent.cloud:9092"
@@ -84,18 +84,13 @@ datasets:
 
   # 5. Sensores IoT — Kafka, streaming, JSON
   - datasource: iot
-    dataset: sensor_readings
-    source:
-      type: streaming
-      topic_pattern: "sensor_readings"
-      key_format: string
-      value_format: json
-      json_schema: >
-        sensor_id string, field_zone string, temperature double,
-        humidity double, soil_quality double, read_at timestamp
-      starting_offsets: earliest
-      partition_by:
-        - field_zone
+      dataset: sensor_readings
+      source:
+        type: batch
+        format: json
+        use_autoloader: false
+        partition_by:
+          - field_zone
 
   # 6. Eventos de clientes — Kafka, streaming, Avro
   - datasource: mobile

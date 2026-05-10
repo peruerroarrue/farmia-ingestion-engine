@@ -18,6 +18,15 @@
 
 # COMMAND ----------
 # MAGIC %md
+# MAGIC ## 0. Intalación de confluent-kafka
+
+# COMMAND ----------
+
+%pip install confluent-kafka
+dbutils.library.restartPython()
+
+# COMMAND ----------
+# MAGIC %md
 # MAGIC ## 1. Setup — rutas e imports
 
 # COMMAND ----------
