@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "unit: tests sin Spark, ejecutables en local",
+    "integration: tests con Spark, requieren entorno Databricks",
+]
