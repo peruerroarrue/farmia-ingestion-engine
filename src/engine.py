@@ -119,22 +119,24 @@ class IngestionEngine:
     # ------------------------------------------------------------------
 
     def _await_queries(
-        self,
-        queries: list[tuple[DatasetConfig, StreamingQuery]],
+            self,
+            queries: list[tuple[DatasetConfig, StreamingQuery]],
     ) -> None:
-        """
-        Espera a que todas las queries terminen e imprime un resumen.
-        Captura errores individuales sin detener el resto de queries.
-        """
+        import time
         succeeded = []
         failed = []
 
         for dataset, query in queries:
             name = f"{dataset.datasource}/{dataset.dataset}"
             try:
-                query.awaitTermination()
-                succeeded.append(name)
-                logger.info(f"✅ Completada: {name}")
+                query.awaitTermination(timeout=120)
+                # Verificamos si terminó correctamente o con error
+                if query.exception() is None:
+                    succeeded.append(name)
+                    logger.info(f"✅ Completada: {name}")
+                else:
+                    failed.append(name)
+                    logger.error(f"❌ Fallida: {name} — {query.exception()}")
             except Exception as e:
                 failed.append(name)
                 logger.error(f"❌ Fallida: {name} — {e}", exc_info=True)
