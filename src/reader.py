@@ -215,10 +215,12 @@ class StreamingReader:
 
         if fmt == "json":
             schema = source.json_schema
-            return df.withColumn(
+            df = df.withColumn(
                 "value",
                 F.from_json(F.col("value").cast("string"), schema)
             )
+            # Extraemos los campos del value al nivel raíz
+            return df.select("*", "value.*").drop("value")
 
         elif fmt == "avro":
             return self._decode_avro(df, source)
