@@ -35,6 +35,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 
+# Configurar catálogo por defecto del workspace  ← AÑADE ESTAS LÍNEAS
+spark.catalog.setCurrentCatalog("workspace")
+spark.sql("USE SCHEMA default")
+
 print(f"✅ Repo root añadido al path: {REPO_ROOT}")
 print(f"✅ Spark version: {spark.version}")
 
@@ -61,6 +65,11 @@ print(f"  bronze  : {env.bronze_path}")
 # COMMAND ----------
 
 from src.engine import IngestionEngine
+
+# Configurar catálogo por defecto del workspace
+spark.conf.set("spark.databricks.unity.catalog.enabled", "true")
+spark.sql("USE CATALOG workspace")
+spark.sql("USE SCHEMA default")
 
 # En Databricks la SparkSession ya existe — la inyectamos al motor
 # para que no intente crear una nueva
