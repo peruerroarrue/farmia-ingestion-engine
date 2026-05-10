@@ -1,0 +1,17 @@
+# Datos generados
+*.json
+*.csv
+*.parquet
+*.avro
+*.jpg
+
+# Spark
+_delta_log/
+_checkpoint/
+_schema/
+__pycache__/
+.venv/
+*.pyc
+
+# Databricks
+.databricks/
