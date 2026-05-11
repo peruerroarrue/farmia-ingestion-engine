@@ -18,14 +18,18 @@ from pyspark.sql import SparkSession
 
 @pytest.fixture(scope="session")
 def spark():
-    """
-    SparkSession local con Delta. Se crea una vez por sesión de tests
-    y se reutiliza en todos los tests para no pagar el coste de arranque
-    múltiples veces.
-    """
-    os.environ.setdefault("SPARK_LOCAL_DIRS", "/tmp/spark_tests")
-    Path("/tmp/spark_tests").mkdir(parents=True, exist_ok=True)
+    try:
+        # En Databricks ya existe la sesión activa
+        from pyspark.sql import SparkSession
+        session = SparkSession.getActiveSession()
+        if session is not None:
+            session.sparkContext.setLogLevel("ERROR")
+            yield session
+            return
+    except Exception:
+        pass
 
+    # Fallback local con Delta
     try:
         from delta import configure_spark_with_delta_pip
         builder = (
@@ -37,7 +41,6 @@ def spark():
             .config("spark.sql.catalog.spark_catalog",
                     "org.apache.spark.sql.delta.catalog.DeltaCatalog")
             .config("spark.sql.shuffle.partitions", "2")
-            .config("spark.default.parallelism", "2")
         )
         session = configure_spark_with_delta_pip(builder).getOrCreate()
     except ImportError:
