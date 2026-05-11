@@ -16,23 +16,14 @@ if REPO_ROOT not in sys.path:
 
 # COMMAND ----------
 
-import subprocess
+import sys
+sys.path.insert(0, "/tmp/farmia-tests")
 
-result = subprocess.run(
-    [
-        sys.executable, "-m", "pytest",
-        "tests/test_batch_reader.py",
-        "-v",
-        "--timeout=120",
-        "--tb=short",
-        "--no-header",
-        "-p", "no:cacheprovider",
-        "--import-mode=importlib",
-    ],
-    capture_output=True,
-    text=True,
-    cwd=REPO_ROOT,
-)
-print(result.stdout)
-if result.stderr:
-    print(result.stderr)
+import pytest
+ret = pytest.main([
+    "tests/test_batch_reader.py",
+    "-v",
+    "--timeout=120",
+    "--tb=short",
+    "--no-header",
+], plugins=[])

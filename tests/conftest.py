@@ -18,40 +18,15 @@ from pyspark.sql import SparkSession
 
 @pytest.fixture(scope="session")
 def spark():
-    try:
-        # En Databricks ya existe la sesión activa
-        from pyspark.sql import SparkSession
-        session = SparkSession.getActiveSession()
-        if session is not None:
-            session.sparkContext.setLogLevel("ERROR")
-            yield session
-            return
-    except Exception:
-        pass
-
-    # Fallback local con Delta
-    try:
-        from delta import configure_spark_with_delta_pip
-        builder = (
-            SparkSession.builder
-            .master("local[2]")
-            .appName("farmia-tests")
-            .config("spark.sql.extensions",
-                    "io.delta.sql.DeltaSparkSessionExtension")
-            .config("spark.sql.catalog.spark_catalog",
-                    "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-            .config("spark.sql.shuffle.partitions", "2")
-        )
-        session = configure_spark_with_delta_pip(builder).getOrCreate()
-    except ImportError:
-        session = (
-            SparkSession.builder
-            .master("local[2]")
-            .appName("farmia-tests")
-            .config("spark.sql.shuffle.partitions", "2")
-            .getOrCreate()
-        )
-
+    from pyspark.sql import SparkSession
+    session = SparkSession.getActiveSession()
+    if session is not None:
+        session.sparkContext.setLogLevel("ERROR")
+        yield session
+        return
+    # Fallback solo para entornos locales sin Spark Connect
+    from pyspark.sql import SparkSession as S
+    session = S.builder.master("local[2]").appName("farmia-tests").getOrCreate()
     session.sparkContext.setLogLevel("ERROR")
     yield session
     session.stop()
@@ -62,23 +37,18 @@ def spark():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def tmp_paths(tmp_path):
-    """
-    Crea la estructura de directorios landing/raw/bronze en una carpeta
-    temporal que se limpia automáticamente tras cada test.
-    """
-    landing = tmp_path / "landing"
-    raw = tmp_path / "raw"
-    bronze = tmp_path / "bronze"
-    landing.mkdir()
-    raw.mkdir()
-    bronze.mkdir()
-    return {
-        "landing": str(landing),
-        "raw": str(raw),
-        "bronze": str(bronze),
-        "base": str(tmp_path),
-    }
+def tmp_paths():
+    import tempfile, os
+    base = tempfile.mkdtemp(dir="/tmp")
+    landing = os.path.join(base, "landing")
+    raw = os.path.join(base, "raw")
+    bronze = os.path.join(base, "bronze")
+    os.makedirs(landing)
+    os.makedirs(raw)
+    os.makedirs(bronze)
+    yield {"landing": landing, "raw": raw, "bronze": bronze, "base": base}
+    import shutil
+    shutil.rmtree(base, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
