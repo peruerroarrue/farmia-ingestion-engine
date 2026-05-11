@@ -26,6 +26,8 @@ result = subprocess.run(
         "--timeout=120",
         "--tb=short",
         "--no-header",
+        "-p", "no:cacheprovider",
+        "--import-mode=importlib",
     ],
     capture_output=True,
     text=True,
