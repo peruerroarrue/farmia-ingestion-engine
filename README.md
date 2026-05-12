@@ -159,6 +159,7 @@ Streaming:
 ### Entorno local (para tests)
 - Python 3.11
 - Java 17 (OpenJDK Temurin recomendado)
+- `SPARK_HOME` **no debe estar definido** (causa conflictos con PySpark)
 
 ```bash
 pip install pyspark==3.5.1 delta-spark==3.2.0 pyyaml pytest pytest-timeout
@@ -216,6 +217,7 @@ Salida esperada:
 ### 5. Ejecutar tests (local)
 
 ```bash
+# Asegúrate de que SPARK_HOME no está definido y Java 17 está activo
 pytest tests/ -v --timeout=120
 ```
 
@@ -237,6 +239,27 @@ El motor está optimizado para Databricks con cluster clásico. En Serverless Fr
 Los tests unitarios (`test_config.py`, 19 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local.
 
 Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks, donde los 6 datasets completan correctamente.
+
+### Empaquetado como librería (mejora futura)
+
+En un entorno productivo, el motor se empaquetaría como una librería Python (wheel) para instalarse directamente en el cluster de Databricks:
+
+```bash
+# Construcción del wheel
+pip install build
+python -m build
+```
+
+```python
+# Instalación en el cluster (desde Databricks)
+%pip install /path/to/farmia_ingestion_engine-1.0.0-py3-none-any.whl
+
+# Uso como librería
+from farmia_ingestion_engine import IngestionEngine
+from farmia_ingestion_engine.environment import load_config
+```
+
+La estructura actual del proyecto (`src/` layout con `pyproject.toml`) ya está preparada para este paso — solo requeriría añadir la configuración de build en `pyproject.toml`.
 
 ### Soporte Avro
 El motor soporta Avro en dos modalidades:
