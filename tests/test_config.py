@@ -16,7 +16,12 @@ from src.config import (
     StreamingSourceConfig,
     DatasetConfig,
 )
-from src.environment import load_config, _build_source, _build_environment
+from src.environment import (
+    load_config,
+    _build_source,
+    _build_environment,
+    _resolve_env_vars,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +259,42 @@ class TestLoadConfig:
         _, datasets = load_config(valid_yaml_file)
         assert datasets[1].datasource == "iot"
         assert datasets[1].is_streaming is True
+
+    def test_resolves_env_vars_in_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KAFKA_SASL_USERNAME", "test_user")
+        monkeypatch.setenv("KAFKA_SASL_PASSWORD", "test_pass")
+        yaml_with_placeholders = """
+environment:
+  landing_path: "/tmp/l"
+  bronze_path: "/tmp/b"
+  kafka_sasl_username: "${KAFKA_SASL_USERNAME}"
+  kafka_sasl_password: "${KAFKA_SASL_PASSWORD}"
+datasets:
+  - datasource: test
+    dataset: data
+    source:
+      type: batch
+      format: json
+"""
+        path = tmp_path / "with_placeholders.yml"
+        path.write_text(yaml_with_placeholders)
+        env, _ = load_config(str(path))
+        assert env.kafka_sasl_username == "test_user"
+        assert env.kafka_sasl_password == "test_pass"
+
+    def test_missing_env_var_raises(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("FARMIA_DOES_NOT_EXIST", raising=False)
+        bad_yaml = """
+environment:
+  landing_path: "/tmp/l"
+  bronze_path: "/tmp/b"
+  kafka_sasl_password: "${FARMIA_DOES_NOT_EXIST}"
+datasets: []
+"""
+        path = tmp_path / "missing_env.yml"
+        path.write_text(bad_yaml)
+        with pytest.raises(EnvironmentError, match="FARMIA_DOES_NOT_EXIST"):
+            load_config(str(path))
 
     def test_unknown_source_type_raises(self, tmp_path):
         bad_yaml = """

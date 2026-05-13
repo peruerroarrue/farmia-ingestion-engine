@@ -20,6 +20,24 @@ if REPO_ROOT not in sys.path:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Carga de credenciales desde Databricks Secrets
+
+# COMMAND ----------
+
+import os
+
+SECRET_SCOPE = "farmia"
+
+os.environ["KAFKA_SASL_USERNAME"]      = dbutils.secrets.get(SECRET_SCOPE, "kafka_sasl_username")
+os.environ["KAFKA_SASL_PASSWORD"]      = dbutils.secrets.get(SECRET_SCOPE, "kafka_sasl_password")
+os.environ["SCHEMA_REGISTRY_USERNAME"] = dbutils.secrets.get(SECRET_SCOPE, "schema_registry_username")
+os.environ["SCHEMA_REGISTRY_PASSWORD"] = dbutils.secrets.get(SECRET_SCOPE, "schema_registry_password")
+
+print(f"✅ Credenciales cargadas desde el scope '{SECRET_SCOPE}'")
+
+# COMMAND ----------
+
 from src.environment import load_config
 
 CONFIG_PATH = f"{REPO_ROOT}/configs/datasets.yml"

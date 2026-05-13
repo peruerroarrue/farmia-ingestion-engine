@@ -150,7 +150,33 @@ y permite reprocesar Bronze en cualquier momento.
 ### Kafka (para datasets streaming)
 - Cluster en Confluent Cloud (Free Trial)
 - Topics creados: `sensor_readings`, `customer_events`
-- Credenciales configuradas en `configs/datasets.yml`
+- Credenciales gestionadas mediante un Databricks **secret scope** (ver siguiente sección)
+
+### Configuración del secret scope
+
+Las credenciales **no se commitean al repo** — viven en un secret scope de Databricks
+y se inyectan como variables de entorno antes de cargar el YAML. El YAML
+solo contiene placeholders `${KAFKA_SASL_PASSWORD}`, etc.
+
+Crea el scope una sola vez con la CLI de Databricks:
+
+```bash
+databricks secrets create-scope farmia
+databricks secrets put-secret farmia kafka_sasl_username      --string-value "TU_API_KEY"
+databricks secrets put-secret farmia kafka_sasl_password      --string-value "TU_API_SECRET"
+databricks secrets put-secret farmia schema_registry_username --string-value "TU_SR_KEY"
+databricks secrets put-secret farmia schema_registry_password --string-value "TU_SR_SECRET"
+```
+
+Para ejecutar **en local**, exporta las mismas variables como variables de entorno
+(o usa un `.env` con `python-dotenv`):
+
+```powershell
+$env:KAFKA_SASL_USERNAME      = "TU_API_KEY"
+$env:KAFKA_SASL_PASSWORD      = "TU_API_SECRET"
+$env:SCHEMA_REGISTRY_USERNAME = "TU_SR_KEY"
+$env:SCHEMA_REGISTRY_PASSWORD = "TU_SR_SECRET"
+```
 
 ### Entorno local (para tests)
 - Python 3.11
@@ -167,17 +193,20 @@ pip install pyspark==3.5.1 delta-spark==3.2.0 pyyaml pytest pytest-timeout
 
 ### 1. Configurar el entorno
 
-Edita `configs/datasets.yml` con tus credenciales:
+Edita `configs/datasets.yml` con tus rutas y URLs (las credenciales **no van aquí**,
+se referencian con placeholders `${VAR}` que se resuelven desde el secret scope):
 
 ```yaml
 environment:
   landing_path: "/Volumes/workspace/default/landing"
   bronze_path: "/Volumes/workspace/default/bronze"
   kafka_bootstrap_servers: "tu-cluster.confluent.cloud:9092"
-  kafka_sasl_username: "tu_api_key"
-  kafka_sasl_password: "tu_api_secret"
-  # ... resto de credenciales
+  kafka_sasl_username: "${KAFKA_SASL_USERNAME}"
+  kafka_sasl_password: "${KAFKA_SASL_PASSWORD}"
+  # ... resto de credenciales como placeholders
 ```
+
+Si aún no creaste el secret scope, ve a la sección **Configuración del secret scope** más arriba.
 
 ### 2. Generar datos de prueba (Databricks)
 

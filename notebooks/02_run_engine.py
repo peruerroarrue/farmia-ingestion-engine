@@ -60,7 +60,29 @@ print(f"✅ Spark version: {spark.version}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Carga de configuración
+# MAGIC ## 2. Carga de credenciales desde Databricks Secrets
+# MAGIC
+# MAGIC Las credenciales de Kafka y Schema Registry viven en un secret scope
+# MAGIC y se inyectan como variables de entorno antes de cargar el YAML.
+# MAGIC Ver README → "Configuración del secret scope" para crearlo.
+
+# COMMAND ----------
+
+import os
+
+SECRET_SCOPE = "farmia"
+
+os.environ["KAFKA_SASL_USERNAME"]      = dbutils.secrets.get(SECRET_SCOPE, "kafka_sasl_username")
+os.environ["KAFKA_SASL_PASSWORD"]      = dbutils.secrets.get(SECRET_SCOPE, "kafka_sasl_password")
+os.environ["SCHEMA_REGISTRY_USERNAME"] = dbutils.secrets.get(SECRET_SCOPE, "schema_registry_username")
+os.environ["SCHEMA_REGISTRY_PASSWORD"] = dbutils.secrets.get(SECRET_SCOPE, "schema_registry_password")
+
+print(f"✅ Credenciales cargadas desde el scope '{SECRET_SCOPE}'")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Carga de configuración
 
 # COMMAND ----------
 
@@ -76,7 +98,7 @@ print(f"  bronze  : {env.bronze_path}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Ejecución del motor
+# MAGIC ## 4. Ejecución del motor
 
 # COMMAND ----------
 
@@ -94,12 +116,12 @@ engine.run()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. Verificación — contenido de bronze
+# MAGIC ## 5. Verificación — contenido de bronze
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.1 Ventas online (JSON → Delta)
+# MAGIC ### 5.1 Ventas online (JSON → Delta)
 
 # COMMAND ----------
 
@@ -112,7 +134,7 @@ display(df_sales.orderBy("_ingested_at").limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.2 Inventario (CSV → Delta)
+# MAGIC ### 5.2 Inventario (CSV → Delta)
 
 # COMMAND ----------
 
@@ -125,7 +147,7 @@ display(df_stock.limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.3 Logística (Parquet → Delta)
+# MAGIC ### 5.3 Logística (Parquet → Delta)
 
 # COMMAND ----------
 
@@ -138,7 +160,7 @@ display(df_shipments.limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.4 Imágenes de campo (BinaryFile → Delta)
+# MAGIC ### 5.4 Imágenes de campo (BinaryFile → Delta)
 
 # COMMAND ----------
 
@@ -151,7 +173,7 @@ display(df_images.select("path", "_ingested_at").limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.5 Sensores IoT (JSON → Delta)
+# MAGIC ### 5.5 Sensores IoT (JSON → Delta)
 
 # COMMAND ----------
 
@@ -164,7 +186,7 @@ display(df_sensors.limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 4.6 Eventos de clientes (Avro → Delta)
+# MAGIC ### 5.6 Eventos de clientes (Avro → Delta)
 
 # COMMAND ----------
 
@@ -177,7 +199,7 @@ display(df_events.limit(5))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Resumen de metadatos de ingesta
+# MAGIC ## 6. Resumen de metadatos de ingesta
 
 # COMMAND ----------
 

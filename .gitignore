@@ -21,3 +21,7 @@ __pycache__/
 *.pyc
 *.pyo
 src/__pycache__/
+.claude/
+
+__pycache__/
+*.pyc

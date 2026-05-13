@@ -13,15 +13,18 @@ environment:
   landing_path: "/Volumes/workspace/default/landing"
   bronze_path: "/Volumes/workspace/default/bronze"
 
+  # Credenciales: se resuelven desde variables de entorno con sintaxis ${VAR}.
+  # En Databricks vienen del scope 'farmia' (ver README → "Secret scope").
+  # En local exporta las variables o usa un .env.
   kafka_bootstrap_servers: "pkc-ewzgj.europe-west4.gcp.confluent.cloud:9092"
   kafka_security_protocol: "SASL_SSL"
   kafka_sasl_mechanism: "PLAIN"
-  kafka_sasl_username: "72W7PM24CJCTWRH2"
-  kafka_sasl_password: "cfltsvEciWV8AuqCryGOdRxlVjA6lB5BA2fyN2z0B5PldhcT3vfoWKssCCPDa5rg"
+  kafka_sasl_username: "${KAFKA_SASL_USERNAME}"
+  kafka_sasl_password: "${KAFKA_SASL_PASSWORD}"
 
   schema_registry_url: "https://psrc-1yngo33.europe-west4.gcp.confluent.cloud"
-  schema_registry_username: "PPPWMUIGNS35DEYU"
-  schema_registry_password: "cflt1qIQ3L/qJgTyqiS4n7eGm/4NLoYqh76CZFQQuaDqR9fXF1aodF6xZsJYzXYg"
+  schema_registry_username: "${SCHEMA_REGISTRY_USERNAME}"
+  schema_registry_password: "${SCHEMA_REGISTRY_PASSWORD}"
 
 # ---------------------------------------------------------------------------
 # Datasets

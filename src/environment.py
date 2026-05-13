@@ -11,6 +11,8 @@ Uso típico
     engine.run()
 """
 
+import os
+import re
 import yaml
 from pathlib import Path
 from src.config import (
@@ -22,12 +24,47 @@ from src.config import (
 
 
 # ---------------------------------------------------------------------------
+# Resolución de variables de entorno
+# ---------------------------------------------------------------------------
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
+
+
+def _resolve_env_vars(value):
+    """
+    Sustituye placeholders ${NOMBRE} por el valor de la variable de entorno
+    correspondiente. Recorre dicts y listas recursivamente.
+
+    Falla con error claro si una variable referenciada no existe en el entorno.
+    En Databricks las variables se inyectan desde un secret scope antes de
+    llamar a load_config (ver notebooks/02_run_engine.py).
+    """
+    if isinstance(value, str):
+        def _replace(match: re.Match) -> str:
+            var_name = match.group(1)
+            env_value = os.environ.get(var_name)
+            if env_value is None:
+                raise EnvironmentError(
+                    f"Variable de entorno '{var_name}' no definida. "
+                    f"Necesaria para resolver el YAML de configuración."
+                )
+            return env_value
+        return _ENV_VAR_PATTERN.sub(_replace, value)
+    if isinstance(value, dict):
+        return {k: _resolve_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_env_vars(v) for v in value]
+    return value
+
+
+# ---------------------------------------------------------------------------
 # Carga del YAML
 # ---------------------------------------------------------------------------
 
 def _load_yaml(path: str | Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        raw = yaml.safe_load(f)
+    return _resolve_env_vars(raw)
 
 
 # ---------------------------------------------------------------------------
