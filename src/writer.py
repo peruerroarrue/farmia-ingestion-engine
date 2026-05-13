@@ -66,13 +66,10 @@ class BronzeWriter:
         if dataset.source.partition_by:
             writer = writer.partitionBy(*dataset.source.partition_by)
 
-        if dataset.is_streaming:
+        if dataset.is_streaming or source.use_autoloader:
             query = writer.start(bronze_path)
         else:
-            # foreachBatch permite archivar ficheros tras cada microbatch
-            source: BatchSourceConfig = dataset.source
-            raw_path = self._raw_path(dataset)
-
+            # foreachBatch solo para batch sin autoloader
             def append_batch(batch_df: DataFrame, batch_id: int) -> None:
                 self._write_batch(batch_df, bronze_path, source)
                 if source.format != "binaryFile":
