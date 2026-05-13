@@ -89,7 +89,7 @@ Agregaciones y métricas de negocio listas para consumo por dashboards y modelos
 farmia-ingestion-engine/
 ├── src/
 │   ├── config.py        # Dataclasses de configuración (Environment, DatasetConfig...)
-│   ├── environment.py   # Carga del YAML y construcción de objetos
+│   ├── environment.py   # Carga del YAML + resolución de ${VAR} desde el entorno
 │   ├── reader.py        # BatchReader y StreamingReader
 │   ├── writer.py        # BronzeWriter (escribe en Delta)
 │   └── engine.py        # IngestionEngine (orquestador principal)
@@ -102,7 +102,7 @@ farmia-ingestion-engine/
 │   └── 04_run_tests.py          # Ejecuta tests de integración
 ├── tests/
 │   ├── conftest.py          # Fixtures compartidas (SparkSession, datos de prueba)
-│   ├── test_config.py       # Tests unitarios de config y environment (19 tests)
+│   ├── test_config.py       # Tests unitarios de config y environment (21 tests)
 │   └── test_batch_reader.py # Tests de integración de BatchReader (9 tests)
 ├── pyproject.toml
 └── README.md
@@ -135,6 +135,18 @@ La capa Landing actúa como archivo inmutable de los ficheros originales —
 no se modifican ni se mueven tras procesarse, lo que mantiene la trazabilidad
 y permite reprocesar Bronze en cualquier momento.
 
+### Gestión de credenciales
+
+Las credenciales sensibles (Kafka, Schema Registry) **no viven en el repo**.
+`configs/datasets.yml` solo contiene placeholders `${KAFKA_SASL_PASSWORD}`, etc.
+`environment.py` los resuelve contra `os.environ` al cargar el YAML —
+si la variable no existe lanza `EnvironmentError` con mensaje claro.
+
+En Databricks, los notebooks (`02_run_engine.py` y `03_kafka_producer.py`)
+inyectan los valores desde un secret scope (`dbutils.secrets.get → os.environ`)
+**antes** de llamar a `load_config(...)`. En local se exportan como variables de
+entorno normales. El motor no conoce el origen — solo ve env vars resueltas.
+
 ---
 
 ## Requisitos previos
@@ -158,7 +170,9 @@ Las credenciales **no se commitean al repo** — viven en un secret scope de Dat
 y se inyectan como variables de entorno antes de cargar el YAML. El YAML
 solo contiene placeholders `${KAFKA_SASL_PASSWORD}`, etc.
 
-Crea el scope una sola vez con la CLI de Databricks:
+Hay dos formas equivalentes de crear el scope. Elige la que prefieras.
+
+**Opción A — Con la CLI de Databricks** (requiere `databricks` instalado y autenticado):
 
 ```bash
 databricks secrets create-scope farmia
@@ -166,6 +180,30 @@ databricks secrets put-secret farmia kafka_sasl_username      --string-value "TU
 databricks secrets put-secret farmia kafka_sasl_password      --string-value "TU_API_SECRET"
 databricks secrets put-secret farmia schema_registry_username --string-value "TU_SR_KEY"
 databricks secrets put-secret farmia schema_registry_password --string-value "TU_SR_SECRET"
+```
+
+**Opción B — Desde un notebook one-shot** (sin instalar nada; aprovecha el contexto autenticado del propio workspace). Crea un notebook `00_setup_secrets` fuera del repo y bórralo después:
+
+```python
+import requests
+ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+host  = ctx.apiUrl().get()
+token = ctx.apiToken().get()
+headers = {"Authorization": f"Bearer {token}"}
+
+# Crear el scope (devuelve 400 si ya existe — ignorar)
+requests.post(f"{host}/api/2.0/secrets/scopes/create",
+              headers=headers, json={"scope": "farmia"})
+
+secrets = {
+    "kafka_sasl_username":      "TU_API_KEY",
+    "kafka_sasl_password":      "TU_API_SECRET",
+    "schema_registry_username": "TU_SR_KEY",
+    "schema_registry_password": "TU_SR_SECRET",
+}
+for key, value in secrets.items():
+    requests.post(f"{host}/api/2.0/secrets/put", headers=headers,
+                  json={"scope": "farmia", "key": key, "string_value": value})
 ```
 
 Para ejecutar **en local**, exporta las mismas variables como variables de entorno
@@ -245,7 +283,7 @@ Salida esperada:
 pytest tests/ -v --timeout=120
 ```
 
-Salida esperada: **28 passed**
+Salida esperada: **30 passed**
 
 ---
 
@@ -259,7 +297,45 @@ El motor está diseñado para funcionar tanto en Databricks Serverless Free Edit
 - **Avro batch sí funciona** — `mobile/customer_events` se genera en Avro en Landing y `BatchReader` lo procesa correctamente.
 
 ### Tests
-Los tests unitarios (`test_config.py`, 19 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
+Los tests unitarios (`test_config.py`, 21 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
+
+### Troubleshooting
+
+**Kafka: `SaslAuthenticationException — Authentication failed. If you are using a Global API key...`**
+
+Pese a lo que dice el mensaje, no es necesariamente que tu key sea Global.
+Habitualmente está causado por uno de estos tres motivos:
+
+1. **La API key se creó en el sitio equivocado.** Tiene que ser una **Cluster API key**:
+   Confluent Cloud → Environments → tu environment → Cluster `farmia-cluster` → pestaña **API keys** → **+ Add key**.
+   Si la generaste en *Account & Access → API keys* (nivel cuenta) no servirá para el broker.
+2. **El secret guardado en el scope tiene caracteres residuales** (un `\n` al final por copy-paste). Verifica `len(dbutils.secrets.get(...))` — el secret de Confluent debe ser de 64 caracteres exactos.
+3. **La key arrastra estado raro** (especialmente si rotaste varias veces). Bórrala desde Confluent y crea una nueva — fix definitivo en muchos casos.
+
+Diagnóstico rápido sin Spark:
+
+```python
+from confluent_kafka.admin import AdminClient
+admin = AdminClient({
+    "bootstrap.servers": env.kafka_bootstrap_servers,
+    "security.protocol": "SASL_SSL",
+    "sasl.mechanism":    "PLAIN",
+    "sasl.username":     dbutils.secrets.get("farmia", "kafka_sasl_username"),
+    "sasl.password":     dbutils.secrets.get("farmia", "kafka_sasl_password"),
+})
+print(list(admin.list_topics(timeout=10).topics.keys()))
+```
+
+Si esto lista los topics, el problema está aguas abajo (Spark, ACLs). Si falla con auth, está en la key/scope.
+
+**Streaming: `Cannot resume query because checkpoint location is in invalid state`**
+
+Si cambiaste el reader de un dataset (p. ej. activaste/desactivaste Autoloader) sobre un Bronze ya escrito,
+el checkpoint queda incompatible. Bórralo y relanza:
+
+```python
+dbutils.fs.rm("/Volumes/workspace/default/bronze/<datasource>/<dataset>_checkpoint", True)
+```
 
 ### Empaquetado como librería (mejora futura)
 
