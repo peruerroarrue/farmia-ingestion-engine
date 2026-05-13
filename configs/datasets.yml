@@ -6,12 +6,11 @@
 # Entorno de ejecución
 # Cambia las rutas según donde ejecutes:
 #   - Local/tests    → rutas absolutas del sistema de ficheros
-#   - Databricks FE  → rutas dbfs:/...
+#   - Databricks FE  → rutas /Volumes/...
 #   - Azure          → rutas abfss://...
 # ---------------------------------------------------------------------------
 environment:
   landing_path: "/Volumes/workspace/default/landing"
-  raw_path: "/Volumes/workspace/default/raw"
   bronze_path: "/Volumes/workspace/default/bronze"
 
   kafka_bootstrap_servers: "pkc-ewzgj.europe-west4.gcp.confluent.cloud:9092"
@@ -35,7 +34,7 @@ datasets:
     source:
       type: batch
       format: json
-      use_autoloader: true        # true en Databricks
+      use_autoloader: true
       schema_hints: "order_id long, customer_id long, total_amount double, ordered_at timestamp"
       schema_evolution: true
       partition_by:
@@ -47,7 +46,7 @@ datasets:
     source:
       type: batch
       format: csv
-      use_autoloader: false
+      use_autoloader: true
       options:
         header: "true"
         delimiter: ","
@@ -62,12 +61,15 @@ datasets:
     source:
       type: batch
       format: parquet
-      use_autoloader: false
+      use_autoloader: true
       schema_evolution: true
       partition_by:
         - ingestion_date
 
   # 4. Imágenes de campo — binaryFile, batch
+  # Autoloader desactivado: binaryFile en cloudFiles tiene soporte limitado
+  # de opciones (pathGlobFilter) en Serverless. El file source nativo
+  # cubre el caso sin perder funcionalidad.
   - datasource: field_ops
     dataset: crop_images
     source:
@@ -96,7 +98,7 @@ datasets:
       partition_by:
         - field_zone
 
-  # 6. Eventos de clientes — Kafka, streaming, Avro
+  # 6. Eventos de clientes — Kafka, streaming, JSON
   - datasource: mobile
     dataset: customer_events
     source:

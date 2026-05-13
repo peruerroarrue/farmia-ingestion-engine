@@ -13,7 +13,6 @@
 # MAGIC ## Capas involucradas
 # MAGIC ```
 # MAGIC Landing  →  (motor lee)  →  Bronze (Delta)
-# MAGIC                         →  Raw    (archivo inmutable)
 # MAGIC ```
 
 # COMMAND ----------
@@ -72,7 +71,6 @@ env, datasets = load_config(CONFIG_PATH)
 
 print(f"\nEntorno:")
 print(f"  landing : {env.landing_path}")
-print(f"  raw     : {env.raw_path}")
 print(f"  bronze  : {env.bronze_path}")
 
 # COMMAND ----------

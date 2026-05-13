@@ -13,49 +13,41 @@ Fuentes de datos
 ────────────────────────────────────────────────────────────
   Ventas online (JSON)     ──┐
   Inventario (CSV)         ──┤
-  Logística (Parquet)      ──┤──► LANDING ──► RAW ──► BRONZE ──► SILVER ──► GOLD
+  Logística (Parquet)      ──┤──► LANDING ──► BRONZE ──► SILVER ──► GOLD
   Imágenes campo (JPG)     ──┤
   Sensores IoT (Kafka JSON)──┤
   Eventos cliente (Kafka)  ──┘
 ```
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        AZURE DATABRICKS LAKEHOUSE                           │
-│                                                                             │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐   ┌───────┐  │
-│  │ LANDING  │───►│   RAW    │───►│  BRONZE  │───►│  SILVER  │──►│ GOLD  │  │
-│  │          │    │          │    │          │    │          │   │       │  │
-│  │ Ficheros │    │ Archivo  │    │ Delta    │    │ Delta    │   │ Delta │  │
-│  │ crudos   │    │ inmutable│    │ Lake     │    │ Lake     │   │ Lake  │  │
-│  │          │    │ original │    │          │    │          │   │       │  │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘   └───────┘  │
-│                                                                             │
-│  /Volumes/workspace/default/                                                │
-│  └── landing/   └── raw/        └── bronze/      (futuras capas)           │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      AZURE DATABRICKS LAKEHOUSE                         │
+│                                                                         │
+│  ┌──────────┐      ┌──────────┐      ┌──────────┐      ┌──────────┐   │
+│  │ LANDING  │─────►│  BRONZE  │─────►│  SILVER  │─────►│   GOLD   │   │
+│  │          │      │          │      │          │      │          │   │
+│  │ Ficheros │      │ Delta    │      │ Delta    │      │ Delta    │   │
+│  │ crudos   │      │ +metadat │      │ limpia   │      │ agregada │   │
+│  │ (origen) │      │ inmutable│      │ +negocio │      │ +KPIs    │   │
+│  └──────────┘      └──────────┘      └──────────┘      └──────────┘   │
+│                                                                         │
+│  /Volumes/workspace/default/                                            │
+│  └── landing/      └── bronze/       (futuras capas Silver / Gold)     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Descripción de cada capa
 
 #### Landing
-Zona de aterrizaje de los datos en crudo. Los sistemas origen depositan aquí los ficheros sin ninguna transformación. Es la única capa a la que escriben los sistemas externos.
+Zona de aterrizaje de los datos en crudo. Los sistemas origen depositan aquí los ficheros sin ninguna transformación. Es la única capa a la que escriben los sistemas externos y actúa también como **archivo inmutable** del dato original — no se modifica ni se elimina, lo que permite reprocesar Bronze ante cualquier bug en la ingesta.
 
 - **Formato:** nativo del origen (JSON, CSV, Parquet, JPG, mensajes Kafka)
 - **Acceso:** solo escritura desde sistemas origen, solo lectura desde el motor
-- **Retención:** temporal — los ficheros se mueven a Raw tras su procesamiento
+- **Retención:** permanente (auditoría y reprocesamiento)
 - **Ejemplos FarmIA:**
   - `landing/ecommerce/sales_orders/sales_orders_001.json`
   - `landing/inventory/stock/stock_001.csv`
   - `landing/field_ops/crop_images/maduros_001.jpg`
-
-#### Raw
-Archivo histórico inmutable de todos los ficheros procesados. Replica exacta de lo que llegó a Landing, preservada indefinidamente para auditoría y reprocesamiento.
-
-- **Formato:** idéntico al origen, sin transformaciones
-- **Acceso:** solo lectura (nunca se modifica ni elimina)
-- **Retención:** permanente
-- **Propósito:** permite reprocesar Bronze si se introduce un bug en la ingesta
 
 #### Bronze
 Primera capa del lakehouse en formato Delta Lake. Contiene los datos tal como llegaron pero enriquecidos con metadatos de ingesta y convertidos a un formato unificado y consultable.
@@ -118,25 +110,30 @@ farmia-ingestion-engine/
 
 ### Datasets configurados
 
-| # | Datasource | Dataset | Formato | Tipo |
-|---|-----------|---------|---------|------|
-| 1 | ecommerce | sales_orders | JSON | Batch |
-| 2 | inventory | stock | CSV | Batch |
-| 3 | logistics | shipments | Parquet | Batch |
-| 4 | field_ops | crop_images | BinaryFile (JPG) | Batch |
-| 5 | iot | sensor_readings | Kafka JSON | Streaming |
-| 6 | mobile | customer_events | Kafka JSON | Streaming |
+| # | Datasource | Dataset | Formato | Tipo | Autoloader |
+|---|-----------|---------|---------|------|-----------|
+| 1 | ecommerce | sales_orders | JSON | Batch | ✅ |
+| 2 | inventory | stock | CSV | Batch | ✅ |
+| 3 | logistics | shipments | Parquet | Batch | ✅ |
+| 4 | field_ops | crop_images | BinaryFile (JPG) | Batch | — |
+| 5 | iot | sensor_readings | Kafka JSON | Streaming | n/a |
+| 6 | mobile | customer_events | Kafka JSON | Streaming | n/a |
 
 ### Flujo de ingesta
 
 ```
 Batch:
-  Landing (ficheros) ──► BatchReader ──► BronzeWriter ──► Bronze (Delta)
-                                    └──► Raw (archivo inmutable)
+  Landing (ficheros) ──► BatchReader (cloudFiles) ──► BronzeWriter ──► Bronze (Delta)
 
 Streaming:
-  Kafka topic ──► StreamingReader ──► BronzeWriter ──► Bronze (Delta)
+  Kafka topic        ──► StreamingReader          ──► BronzeWriter ──► Bronze (Delta)
 ```
+
+El mismo `BronzeWriter` sirve para batch y streaming: un único patrón
+`writeStream.format("delta").trigger(availableNow=True).start(bronze_path)`.
+La capa Landing actúa como archivo inmutable de los ficheros originales —
+no se modifican ni se mueven tras procesarse, lo que mantiene la trazabilidad
+y permite reprocesar Bronze en cualquier momento.
 
 ---
 
@@ -147,7 +144,6 @@ Streaming:
 - Volúmenes creados en Unity Catalog:
   ```sql
   CREATE VOLUME IF NOT EXISTS workspace.default.landing;
-  CREATE VOLUME IF NOT EXISTS workspace.default.raw;
   CREATE VOLUME IF NOT EXISTS workspace.default.bronze;
   ```
 
@@ -176,7 +172,6 @@ Edita `configs/datasets.yml` con tus credenciales:
 ```yaml
 environment:
   landing_path: "/Volumes/workspace/default/landing"
-  raw_path: "/Volumes/workspace/default/raw"
   bronze_path: "/Volumes/workspace/default/bronze"
   kafka_bootstrap_servers: "tu-cluster.confluent.cloud:9092"
   kafka_sasl_username: "tu_api_key"
@@ -225,43 +220,32 @@ Salida esperada: **28 passed**
 
 ---
 
-## Notas sobre limitaciones del entorno
+## Notas sobre el entorno (Databricks Free Edition Serverless)
 
-### Databricks Serverless (Free Edition)
-El motor está optimizado para Databricks con cluster clásico. En Serverless Free Edition se detectaron las siguientes limitaciones:
+El motor está diseñado para funcionar tanto en Databricks Serverless Free Edition como en cluster clásico, sin cambios de código. Adaptaciones aplicadas:
 
-- `input_file_name()` no soportado → sustituido por `_metadata.file_path`
-- `persist()`/`unpersist()` no soportado → eliminado del BronzeWriter
-- Avro como streaming source no soportado → customer_events usa JSON en streaming
-- DBFS root deshabilitado → se usan Unity Catalog Volumes (`/Volumes/...`)
+- **`input_file_name()` no soportado en Unity Catalog** → se usa `_metadata.file_path`, que es la API oficial recomendada por Databricks (mismo rendimiento).
+- **DBFS root deshabilitado** → se usan rutas de Unity Catalog Volumes (`/Volumes/...`). En Azure productivo bastaría con cambiar las rutas a `abfss://...` en el YAML; el motor no requiere cambios.
+- **Avro como streaming source restringido en clusters compartidos** → los topics Kafka usan JSON. El código de decodificación Avro con Schema Registry sigue implementado en `StreamingReader._decode_avro()` y se activa cambiando `value_format: avro` en el YAML cuando se ejecute en un cluster dedicado.
+- **Avro batch sí funciona** — `mobile/customer_events` se genera en Avro en Landing y `BatchReader` lo procesa correctamente.
 
-### Tests de integración
-Los tests unitarios (`test_config.py`, 19 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local.
-
-Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks, donde los 6 datasets completan correctamente.
+### Tests
+Los tests unitarios (`test_config.py`, 19 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
 
 ### Empaquetado como librería (mejora futura)
 
 En un entorno productivo, el motor se empaquetaría como una librería Python (wheel) para instalarse directamente en el cluster de Databricks:
 
 ```bash
-# Construcción del wheel
 pip install build
 python -m build
 ```
 
 ```python
-# Instalación en el cluster (desde Databricks)
 %pip install /path/to/farmia_ingestion_engine-1.0.0-py3-none-any.whl
 
-# Uso como librería
 from farmia_ingestion_engine import IngestionEngine
 from farmia_ingestion_engine.environment import load_config
 ```
 
 La estructura actual del proyecto (`src/` layout con `pyproject.toml`) ya está preparada para este paso — solo requeriría añadir la configuración de build en `pyproject.toml`.
-
-### Soporte Avro
-El motor soporta Avro en dos modalidades:
-- **Batch:** funcionando — `mobile/customer_events` se genera en Avro en Landing y BatchReader lo procesa correctamente
-- **Streaming con Schema Registry:** implementado en `StreamingReader._decode_avro()` pero requiere cluster Databricks dedicado (no Serverless)

@@ -14,8 +14,8 @@ class Environment:
     directamente a variables de entorno ni rutas hardcodeadas.
     """
     landing_path: str           # Origen de los ficheros crudos
-    raw_path: str               # Archivo inmutable tras la ingesta
     bronze_path: str            # Tablas Delta de destino
+    raw_path: Optional[str] = None  # Reservado (no usado en la arquitectura actual)
     kafka_bootstrap_servers: Optional[str] = None
     kafka_security_protocol: Optional[str] = None
     kafka_sasl_mechanism: Optional[str] = None
