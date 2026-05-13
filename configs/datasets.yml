@@ -35,7 +35,7 @@ datasets:
     source:
       type: batch
       format: json
-      use_autoloader: false        # true en Databricks
+      use_autoloader: true        # true en Databricks
       schema_hints: "order_id long, customer_id long, total_amount double, ordered_at timestamp"
       schema_evolution: true
       partition_by:
