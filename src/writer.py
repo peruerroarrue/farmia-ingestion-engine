@@ -51,6 +51,7 @@ class BronzeWriter:
         bronze_path = self._bronze_path(dataset)
         checkpoint_path = self._checkpoint_path(dataset)
         query_name = f"{dataset.datasource}__{dataset.dataset}"
+        source = dataset.source
 
         logger.info(f"[BronzeWriter] Iniciando query '{query_name}' → {bronze_path}")
 
