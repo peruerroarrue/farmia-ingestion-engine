@@ -103,6 +103,7 @@ farmia-ingestion-engine/
 ├── tests/
 │   ├── conftest.py          # Fixtures compartidas (SparkSession, datos de prueba)
 │   ├── test_config.py       # Tests unitarios de config y environment (21 tests)
+│   ├── test_engine.py       # Tests unitarios de IngestionResult/Error (7 tests)
 │   └── test_batch_reader.py # Tests de integración de BatchReader (9 tests)
 ├── pyproject.toml
 └── README.md
@@ -134,6 +135,26 @@ El mismo `BronzeWriter` sirve para batch y streaming: un único patrón
 La capa Landing actúa como archivo inmutable de los ficheros originales —
 no se modifican ni se mueven tras procesarse, lo que mantiene la trazabilidad
 y permite reprocesar Bronze en cualquier momento.
+
+### Manejo de errores
+
+`IngestionEngine.run()` devuelve un `IngestionResult` con las listas de
+ingestas correctas y fallidas, y **lanza `IngestionError`** al final si
+alguna falló. Esto hace que un Databricks Job que ejecute el motor
+termine con estado FAILED en cuanto haya algún problema, en lugar de
+quedarse en SUCCEEDED ocultando errores en los logs.
+
+Dos modos de operación:
+
+- `IngestionEngine(env, datasets)` — **tolerante** (por defecto): intenta
+  todas las ingestas, agrega resultados, y al final lanza `IngestionError`
+  si alguna falló. Útil para que un fallo aislado no impida procesar el resto.
+- `IngestionEngine(env, datasets, fail_fast=True)` — **estricto**: aborta
+  en cuanto una ingesta falla (ya sea al lanzar o durante la ejecución).
+  Útil en CI/CD o cuando un fallo invalida el resto de la ejecución.
+
+El motor también loguea métricas agregadas por query antes de marcarla como
+completada (`batches`, `rows`, `duration_ms`), basadas en `query.recentProgress`.
 
 ### Gestión de credenciales
 
@@ -283,7 +304,7 @@ Salida esperada:
 pytest tests/ -v --timeout=120
 ```
 
-Salida esperada: **30 passed**
+Salida esperada: **37 passed**
 
 ---
 
@@ -297,7 +318,7 @@ El motor está diseñado para funcionar tanto en Databricks Serverless Free Edit
 - **Avro batch sí funciona** — `mobile/customer_events` se genera en Avro en Landing y `BatchReader` lo procesa correctamente.
 
 ### Tests
-Los tests unitarios (`test_config.py`, 21 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
+Los tests unitarios (`test_config.py` 21 tests + `test_engine.py` 7 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
 
 ### Troubleshooting
 

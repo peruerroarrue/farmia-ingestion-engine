@@ -13,11 +13,16 @@ Uso típico
     from src.engine import IngestionEngine
 
     env, datasets = load_config("configs/datasets.yml")
-    engine = IngestionEngine(env, datasets)
-    engine.run()
+    engine = IngestionEngine(env, datasets)            # tolerante a fallos
+    # o bien
+    engine = IngestionEngine(env, datasets, fail_fast=True)  # corta al primer error
+
+    result = engine.run()      # devuelve IngestionResult
+                               # lanza IngestionError si alguna ingesta falló
 """
 
 import logging
+from dataclasses import dataclass, field
 from pyspark.sql import SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
@@ -31,6 +36,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Resultado y excepción
+# ---------------------------------------------------------------------------
+
+class IngestionError(RuntimeError):
+    """
+    Lanzada por IngestionEngine.run() cuando alguna ingesta falló.
+    Permite que el job de Databricks termine con código != 0
+    y sea marcado como FAILED por el scheduler.
+    """
+
+
+@dataclass
+class IngestionResult:
+    """
+    Resultado de una ejecución del motor.
+
+    Atributos
+    ---------
+    succeeded : list[str]
+        Nombres de los datasets que terminaron correctamente (formato
+        'datasource/dataset').
+    failed : list[tuple[str, str]]
+        Pares (nombre, mensaje de error) de los datasets que fallaron.
+    """
+    succeeded: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def total(self) -> int:
+        return len(self.succeeded) + len(self.failed)
+
+    @property
+    def all_ok(self) -> bool:
+        return len(self.failed) == 0
+
+
+# ---------------------------------------------------------------------------
+# Motor
+# ---------------------------------------------------------------------------
 
 class IngestionEngine:
     """
@@ -47,6 +93,13 @@ class IngestionEngine:
         Lista de datasets a ingestar.
     spark : SparkSession, opcional
         Si no se proporciona, el motor crea una sesión local con Delta.
+    fail_fast : bool, por defecto False
+        Si True, corta la ejecución en cuanto una ingesta falla
+        (al lanzar la query o durante la ejecución). Si False, intenta
+        ejecutar todas las ingestas y al final lanza IngestionError si
+        alguna falló.
+    await_timeout_sec : int, por defecto 300
+        Timeout en segundos de awaitTermination por query.
     """
 
     def __init__(
@@ -54,10 +107,14 @@ class IngestionEngine:
         env: Environment,
         datasets: list[DatasetConfig],
         spark: SparkSession | None = None,
+        fail_fast: bool = False,
+        await_timeout_sec: int = 300,
     ):
         self.env = env
         self.datasets = datasets
         self.spark = spark or self._build_spark_session()
+        self.fail_fast = fail_fast
+        self.await_timeout_sec = await_timeout_sec
         self._batch_reader = BatchReader(self.spark, env)
         self._streaming_reader = StreamingReader(self.spark, env)
         self._writer = BronzeWriter(self.spark, env)
@@ -66,46 +123,67 @@ class IngestionEngine:
     # Punto de entrada principal
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
+    def run(self) -> IngestionResult:
         """
         Ejecuta la ingesta completa:
         1. Crea un streaming DataFrame por cada dataset.
-        2. Lanza todas las queries en paralelo.
+        2. Lanza todas las queries en secuencia.
         3. Espera a que terminen e informa del resultado.
+
+        Devuelve el IngestionResult agregado.
+        Lanza IngestionError si alguna ingesta falló.
         """
-        logger.info(f"🚀 Iniciando motor de ingesta — {len(self.datasets)} datasets")
+        logger.info(
+            f"🚀 Iniciando motor de ingesta — {len(self.datasets)} datasets "
+            f"(fail_fast={self.fail_fast})"
+        )
 
-        queries = self._start_queries()
+        result = IngestionResult()
+        queries = self._start_queries(result)
 
-        if not queries:
+        if queries:
+            self._await_queries(queries, result)
+        elif not result.failed:
             logger.warning("No se lanzó ninguna query. Revisa la configuración.")
-            return
 
-        self._await_queries(queries)
+        self._print_summary(result)
+
+        if not result.all_ok:
+            raise IngestionError(
+                f"{len(result.failed)}/{result.total} ingestas fallaron: "
+                f"{[name for name, _ in result.failed]}"
+            )
+
+        return result
 
     # ------------------------------------------------------------------
     # Creación y lanzamiento de queries
     # ------------------------------------------------------------------
 
-    def _start_queries(self) -> list[tuple[DatasetConfig, StreamingQuery]]:
+    def _start_queries(
+        self,
+        result: IngestionResult,
+    ) -> list[tuple[DatasetConfig, StreamingQuery]]:
         """
         Itera sobre los datasets, crea el DataFrame correspondiente
         y lanza la streaming query. Devuelve los pares (config, query).
+        Los datasets que fallan al lanzar quedan registrados en result.failed.
         """
         queries = []
         for dataset in self.datasets:
+            name = f"{dataset.datasource}/{dataset.dataset}"
             try:
                 df = self._read(dataset)
                 query = self._writer.write(dataset, df)
                 queries.append((dataset, query))
-                logger.info(
-                    f"▶️  Query lanzada: {dataset.datasource}/{dataset.dataset}"
-                )
+                logger.info(f"▶️  Query lanzada: {name}")
             except Exception as e:
-                logger.error(
-                    f"❌ Error al lanzar {dataset.datasource}/{dataset.dataset}: {e}",
-                    exc_info=True,
-                )
+                logger.error(f"❌ Error al lanzar {name}: {e}", exc_info=True)
+                result.failed.append((name, str(e)))
+                if self.fail_fast:
+                    raise IngestionError(
+                        f"fail_fast: '{name}' falló al lanzar la query"
+                    ) from e
         return queries
 
     def _read(self, dataset: DatasetConfig):
@@ -119,42 +197,71 @@ class IngestionEngine:
     # ------------------------------------------------------------------
 
     def _await_queries(
-            self,
-            queries: list[tuple[DatasetConfig, StreamingQuery]],
+        self,
+        queries: list[tuple[DatasetConfig, StreamingQuery]],
+        result: IngestionResult,
     ) -> None:
-        import time
-        succeeded = []
-        failed = []
-
         for dataset, query in queries:
             name = f"{dataset.datasource}/{dataset.dataset}"
             try:
-                query.awaitTermination(timeout=120)
-                # Verificamos si terminó correctamente o con error
+                query.awaitTermination(timeout=self.await_timeout_sec)
                 if query.exception() is None:
-                    succeeded.append(name)
+                    self._log_progress(name, query)
+                    result.succeeded.append(name)
                     logger.info(f"✅ Completada: {name}")
                 else:
-                    failed.append(name)
-                    logger.error(f"❌ Fallida: {name} — {query.exception()}")
+                    err = str(query.exception())
+                    result.failed.append((name, err))
+                    logger.error(f"❌ Fallida: {name} — {err}")
+                    if self.fail_fast:
+                        raise IngestionError(
+                            f"fail_fast: '{name}' falló durante la ejecución"
+                        )
+            except IngestionError:
+                raise
             except Exception as e:
-                failed.append(name)
+                result.failed.append((name, str(e)))
                 logger.error(f"❌ Fallida: {name} — {e}", exc_info=True)
+                if self.fail_fast:
+                    raise IngestionError(
+                        f"fail_fast: '{name}' falló durante la espera"
+                    ) from e
 
-        self._print_summary(succeeded, failed)
+    def _log_progress(self, name: str, query: StreamingQuery) -> None:
+        """
+        Loguea métricas agregadas de la query (rows, batches, tiempo).
+        Suma por todos los microbatches recientes para obtener el total.
+        """
+        recent = query.recentProgress
+        if not recent:
+            logger.info(f"   📊 {name} | sin métricas disponibles")
+            return
+
+        total_rows = sum(p.get("numInputRows", 0) for p in recent)
+        n_batches = len(recent)
+        duration_ms = sum(
+            p.get("durationMs", {}).get("triggerExecution", 0) for p in recent
+        )
+        logger.info(
+            f"   📊 {name} | batches={n_batches} | rows={total_rows} "
+            f"| duration_ms={duration_ms}"
+        )
 
     # ------------------------------------------------------------------
     # Resumen final
     # ------------------------------------------------------------------
 
-    def _print_summary(self, succeeded: list[str], failed: list[str]) -> None:
-        total = len(succeeded) + len(failed)
+    def _print_summary(self, result: IngestionResult) -> None:
         logger.info("─" * 60)
-        logger.info(f"📊 Resumen: {len(succeeded)}/{total} ingestas completadas")
-        for name in succeeded:
+        logger.info(
+            f"📊 Resumen: {len(result.succeeded)}/{result.total} ingestas completadas"
+        )
+        for name in result.succeeded:
             logger.info(f"   ✅ {name}")
-        for name in failed:
-            logger.error(f"   ❌ {name}")
+        for name, err in result.failed:
+            # Truncamos el error para que el resumen quepa en pantalla
+            err_short = err.split("\n", 1)[0][:120]
+            logger.error(f"   ❌ {name} — {err_short}")
         logger.info("─" * 60)
 
     # ------------------------------------------------------------------
