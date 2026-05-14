@@ -103,7 +103,7 @@ farmia-ingestion-engine/
 ├── tests/
 │   ├── conftest.py          # Fixtures compartidas (SparkSession, datos de prueba)
 │   ├── test_config.py       # Tests unitarios de config y environment (23 tests)
-│   ├── test_engine.py       # Tests unitarios de engine y writer (10 tests)
+│   ├── test_engine.py       # Tests unitarios de engine y writer (9 tests)
 │   └── test_batch_reader.py # Tests de integración de BatchReader (9 tests)
 ├── pyproject.toml
 └── README.md
@@ -136,10 +136,10 @@ La capa Landing actúa como archivo inmutable de los ficheros originales —
 no se modifican ni se mueven tras procesarse, lo que mantiene la trazabilidad
 y permite reprocesar Bronze en cualquier momento.
 
-Tras cada ingesta exitosa, el motor registra el dataset como **tabla externa
-de Unity Catalog** (`workspace.bronze.<datasource>__<dataset>`). El dato sigue
-viviendo en el path del Volume (ownership de la capa Landing/Bronze), pero
-queda consultable desde el SQL Editor:
+El motor escribe directamente a tablas **managed de Unity Catalog** usando
+`writeStream.toTable("workspace.bronze.<datasource>__<dataset>")`. UC gestiona
+la ubicación física del dato y crea la tabla automáticamente la primera vez,
+así que los datasets quedan consultables desde el SQL Editor sin pasos extra:
 
 ```sql
 SELECT * FROM workspace.bronze.ecommerce__sales_orders LIMIT 10;
@@ -149,9 +149,15 @@ FROM workspace.bronze.iot__sensor_readings
 GROUP BY _datasource;
 ```
 
-El registro se controla con los campos `bronze_catalog` y `bronze_schema` del
-`Environment`. Si no se especifican (caso de tests locales sin metastore),
-el motor se salta el registro sin error.
+El comportamiento se controla con los campos `bronze_catalog` y `bronze_schema`
+del `Environment`. Si están definidos → modo UC managed. Si no → fallback a
+`writeStream.start(path)` escribiendo a `bronze_path` (modo usado en tests
+locales sin metastore).
+
+> Nota: en Databricks Free Edition no es posible registrar tablas externas con
+> `LOCATION '/Volumes/...'` (UC reserva las tablas externas para paths con
+> scheme cloud como `abfss://`, `s3://`, `gs://`). Por eso usamos managed —
+> es además el patrón nativo recomendado por Databricks.
 
 ### Manejo de errores
 
@@ -321,7 +327,7 @@ Salida esperada:
 pytest tests/ -v --timeout=120
 ```
 
-Salida esperada: **42 passed**
+Salida esperada: **41 passed**
 
 ---
 
@@ -335,7 +341,7 @@ El motor está diseñado para funcionar tanto en Databricks Serverless Free Edit
 - **Avro batch sí funciona** — `mobile/customer_events` se genera en Avro en Landing y `BatchReader` lo procesa correctamente.
 
 ### Tests
-Los tests unitarios (`test_config.py` 23 tests + `test_engine.py` 10 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
+Los tests unitarios (`test_config.py` 23 tests + `test_engine.py` 9 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
 
 ### Troubleshooting
 

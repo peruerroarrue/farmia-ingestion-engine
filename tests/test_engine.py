@@ -9,7 +9,7 @@ en Databricks vía el notebook 02_run_engine.py.
 """
 
 import pytest
-from src.config import Environment, DatasetConfig, BatchSourceConfig
+from src.config import DatasetConfig, BatchSourceConfig
 from src.engine import IngestionResult, IngestionError
 from src.writer import BronzeWriter
 
@@ -73,10 +73,10 @@ class TestIngestionError:
 
 
 # ---------------------------------------------------------------------------
-# BronzeWriter.register_table — comportamiento sin Spark real
+# BronzeWriter — helpers que no requieren Spark
 # ---------------------------------------------------------------------------
 
-class TestBronzeWriterRegisterTable:
+class TestBronzeWriterHelpers:
 
     def _dataset(self) -> DatasetConfig:
         return DatasetConfig(
@@ -85,16 +85,16 @@ class TestBronzeWriterRegisterTable:
             source=BatchSourceConfig(format="json"),
         )
 
-    def test_returns_none_when_catalog_not_set(self):
-        env = Environment(landing_path="/l", bronze_path="/b")  # sin catalog/schema
-        writer = BronzeWriter(spark=None, env=env)  # spark no se usa en este path
-        assert writer.register_table(self._dataset()) is None
-
-    def test_returns_none_when_only_catalog_set(self):
-        env = Environment(landing_path="/l", bronze_path="/b", bronze_catalog="ws")
-        writer = BronzeWriter(spark=None, env=env)
-        assert writer.register_table(self._dataset()) is None
-
     def test_table_name_format(self):
         # Convención: {datasource}__{dataset}
         assert BronzeWriter._table_name(self._dataset()) == "ecommerce__sales_orders"
+
+    def test_table_name_uses_double_underscore_separator(self):
+        # Importante: doble underscore para diferenciar del separador interno
+        # de datasources/datasets que pudieran tener un guion bajo
+        ds = DatasetConfig(
+            datasource="field_ops",
+            dataset="crop_images",
+            source=BatchSourceConfig(format="binaryFile"),
+        )
+        assert BronzeWriter._table_name(ds) == "field_ops__crop_images"

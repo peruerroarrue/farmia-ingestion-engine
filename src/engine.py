@@ -207,7 +207,6 @@ class IngestionEngine:
                 query.awaitTermination(timeout=self.await_timeout_sec)
                 if query.exception() is None:
                     self._log_progress(name, query)
-                    self._register_table(dataset, name)
                     result.succeeded.append(name)
                     logger.info(f"✅ Completada: {name}")
                 else:
@@ -227,21 +226,6 @@ class IngestionEngine:
                     raise IngestionError(
                         f"fail_fast: '{name}' falló durante la espera"
                     ) from e
-
-    def _register_table(self, dataset: DatasetConfig, name: str) -> None:
-        """
-        Registra el dataset como tabla externa en Unity Catalog.
-        El fallo no es fatal — la ingesta a Bronze ya tuvo éxito; solo
-        se pierde la posibilidad de consultarlo por nombre desde SQL.
-        """
-        try:
-            fqn = self._writer.register_table(dataset)
-            if fqn:
-                logger.info(f"   📋 Tabla registrada en UC: {fqn}")
-        except Exception as e:
-            logger.warning(
-                f"   ⚠️  No se pudo registrar la tabla UC de {name}: {e}"
-            )
 
     def _log_progress(self, name: str, query: StreamingQuery) -> None:
         """
