@@ -10,6 +10,28 @@ Motor de ingesta de datos para FarmIA, una startup agrícola en expansión nacio
 
 *Fuente editable: [docs/architecture.drawio](docs/architecture.drawio)*
 
+---
+
+## Inicio rápido para evaluación
+
+Para ver el motor funcionando end-to-end en Databricks Free Edition:
+
+1. **Clonar este repo en Databricks** → Workspace → Repos → *Add Repo* → URL del repo.
+2. **Crear el secret scope `farmia`** con tus credenciales de Confluent y Schema Registry (ver sección **"Configuración del secret scope"** más abajo).
+3. **Ajustar `REPO_ROOT`** en los notebooks `02_run_engine.py` y `03_kafka_producer.py` a tu path:
+   `/Workspace/Repos/<tu_email>/farmia-ingestion-engine`
+4. **Ejecutar los notebooks en orden**:
+   - `notebooks/01_generate_datasets.py` — genera 200 registros sintéticos por dataset en Landing
+   - `notebooks/03_kafka_producer.py` — publica 50 mensajes en cada topic de Kafka
+   - `notebooks/02_run_engine.py` — ejecuta el motor de ingesta
+5. **Verificar el resultado** en la sección 6 del notebook `02_run_engine.py`: muestra el conteo y unas filas de cada uno de los 6 datasets en Bronze.
+
+> **¿Sin cuenta de Confluent Cloud?** Comenta los datasets `iot/sensor_readings` y `mobile/customer_events` en `configs/datasets.yml` y salta la ejecución de `03_kafka_producer.py`. El motor procesará los 4 datasets batch (JSON, CSV, Parquet, imágenes) sin problema.
+>
+> **Tests sin Databricks:** `pytest tests/` ejecuta los 37 tests (28 unitarios + 9 de integración con Spark) en local. Requiere Python 3.11 y Java 17.
+
+---
+
 ### Descripción de cada capa
 
 #### Landing
