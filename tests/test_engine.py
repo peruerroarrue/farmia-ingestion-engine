@@ -9,9 +9,7 @@ en Databricks vía el notebook 02_run_engine.py.
 """
 
 import pytest
-from src.config import DatasetConfig, BatchSourceConfig
 from src.engine import IngestionResult, IngestionError
-from src.writer import BronzeWriter
 
 
 # ---------------------------------------------------------------------------
@@ -72,29 +70,3 @@ class TestIngestionError:
             assert wrapped.__cause__ is original
 
 
-# ---------------------------------------------------------------------------
-# BronzeWriter — helpers que no requieren Spark
-# ---------------------------------------------------------------------------
-
-class TestBronzeWriterHelpers:
-
-    def _dataset(self) -> DatasetConfig:
-        return DatasetConfig(
-            datasource="ecommerce",
-            dataset="sales_orders",
-            source=BatchSourceConfig(format="json"),
-        )
-
-    def test_table_name_format(self):
-        # Convención: {datasource}__{dataset}
-        assert BronzeWriter._table_name(self._dataset()) == "ecommerce__sales_orders"
-
-    def test_table_name_uses_double_underscore_separator(self):
-        # Importante: doble underscore para diferenciar del separador interno
-        # de datasources/datasets que pudieran tener un guion bajo
-        ds = DatasetConfig(
-            datasource="field_ops",
-            dataset="crop_images",
-            source=BatchSourceConfig(format="binaryFile"),
-        )
-        assert BronzeWriter._table_name(ds) == "field_ops__crop_images"

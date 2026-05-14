@@ -13,12 +13,6 @@ environment:
   landing_path: "/Volumes/workspace/default/landing"
   bronze_path: "/Volumes/workspace/default/bronze"
 
-  # Registro de tablas externas en Unity Catalog (opcional).
-  # Si se omiten, el motor escribe a bronze_path pero no registra tabla
-  # — útil para tests locales sin metastore.
-  bronze_catalog: "workspace"
-  bronze_schema: "bronze"
-
   # Credenciales: se resuelven desde variables de entorno con sintaxis ${VAR}.
   # En Databricks vienen del scope 'farmia' (ver README → "Secret scope").
   # En local exporta las variables o usa un .env.

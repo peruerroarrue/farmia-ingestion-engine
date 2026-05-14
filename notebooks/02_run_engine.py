@@ -4,7 +4,7 @@
 # MAGIC
 # MAGIC Notebook de ejecución del motor de ingesta. Procesa los 6 datasets
 # MAGIC configurados en `configs/datasets.yml` y los escribe en Bronze como
-# MAGIC **tablas managed de Unity Catalog**.
+# MAGIC tablas Delta.
 # MAGIC
 # MAGIC ## Requisitos previos
 # MAGIC 1. Haber ejecutado `01_generate_datasets.py` (datos en Landing).
@@ -79,22 +79,21 @@ print(f"✅ Credenciales cargadas desde el scope '{SECRET_SCOPE}'")
 # MAGIC %md
 # MAGIC ## 3. Limpieza (opcional)
 # MAGIC
-# MAGIC Pon `RESET = True` para empezar desde cero. Útil:
-# MAGIC - **Primera ejecución** tras cambiar el sink (path → tabla UC managed)
-# MAGIC - Tras fallos parciales en ejecuciones anteriores
-# MAGIC - Para forzar un reprocesado completo desde Landing/Kafka
-# MAGIC
-# MAGIC Detiene queries activas, borra checkpoints y elimina el schema bronze.
+# MAGIC Pon `RESET = True` para empezar desde cero: detiene queries activas
+# MAGIC y borra el contenido de Bronze (data + checkpoints + schemaLocation
+# MAGIC de Autoloader). Útil tras fallos parciales en ejecuciones anteriores
+# MAGIC o para forzar un reprocesado completo desde Landing/Kafka.
 
 # COMMAND ----------
 
-RESET = False  # ⚠️ Ponlo a True solo cuando lo necesites
+RESET = False  # ⚠️ Ponlo a True solo cuando necesites un reset completo
 
 if RESET:
     for q in spark.streams.active:
         print(f"Deteniendo query activa: {q.name}")
         q.stop()
     dbutils.fs.rm("/Volumes/workspace/default/bronze", True)
+    # Por si quedó residuo de algún experimento previo con tablas UC bronze
     spark.sql("DROP SCHEMA IF EXISTS workspace.bronze CASCADE")
     print("🧹 Bronze limpio — listo para empezar de cero")
 else:
@@ -115,7 +114,6 @@ env, datasets = load_config(CONFIG_PATH)
 print(f"\nEntorno:")
 print(f"  landing : {env.landing_path}")
 print(f"  bronze  : {env.bronze_path}")
-print(f"  UC sink : {env.bronze_catalog}.{env.bronze_schema}")
 
 # COMMAND ----------
 
@@ -138,95 +136,107 @@ result
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Tablas registradas en Unity Catalog
-# MAGIC
-# MAGIC Cada dataset queda como tabla managed bajo `workspace.bronze` y se
-# MAGIC puede consultar directamente desde el SQL Editor.
-
-# COMMAND ----------
-
-display(spark.sql(
-    f"SHOW TABLES IN {env.bronze_catalog}.{env.bronze_schema}"
-))
+# MAGIC ## 6. Verificación — contenido de Bronze
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 7. Verificación — conteo y última ingesta por dataset
+# MAGIC ### 6.1 Ventas online (JSON → Delta)
+
+# COMMAND ----------
+
+df_sales = spark.read.format("delta").load(
+    f"{env.bronze_path}/ecommerce/sales_orders"
+)
+print(f"Registros ingestados: {df_sales.count()}")
+display(df_sales.orderBy("_ingested_at").limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6.2 Inventario (CSV → Delta)
+
+# COMMAND ----------
+
+df_stock = spark.read.format("delta").load(
+    f"{env.bronze_path}/inventory/stock"
+)
+print(f"Registros ingestados: {df_stock.count()}")
+display(df_stock.limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6.3 Logística (Parquet → Delta)
+
+# COMMAND ----------
+
+df_shipments = spark.read.format("delta").load(
+    f"{env.bronze_path}/logistics/shipments"
+)
+print(f"Registros ingestados: {df_shipments.count()}")
+display(df_shipments.limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6.4 Imágenes de campo (BinaryFile → Delta)
+
+# COMMAND ----------
+
+df_images = spark.read.format("delta").load(
+    f"{env.bronze_path}/field_ops/crop_images"
+)
+print(f"Imágenes ingestadas: {df_images.count()}")
+display(df_images.select("path", "_ingested_at").limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6.5 Sensores IoT (JSON → Delta)
+
+# COMMAND ----------
+
+df_sensors = spark.read.format("delta").load(
+    f"{env.bronze_path}/iot/sensor_readings"
+)
+print(f"Registros ingestados: {df_sensors.count()}")
+display(df_sensors.limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6.6 Eventos de clientes (Kafka JSON → Delta)
+
+# COMMAND ----------
+
+df_events = spark.read.format("delta").load(
+    f"{env.bronze_path}/mobile/customer_events"
+)
+print(f"Registros ingestados: {df_events.count()}")
+display(df_events.limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 7. Resumen de metadatos de ingesta
 
 # COMMAND ----------
 
 import pyspark.sql.functions as F
 
-table_names = [
-    "ecommerce__sales_orders",
-    "inventory__stock",
-    "logistics__shipments",
-    "field_ops__crop_images",
-    "iot__sensor_readings",
-    "mobile__customer_events",
+datasets_info = [
+    ("ecommerce/sales_orders", df_sales),
+    ("inventory/stock",        df_stock),
+    ("logistics/shipments",    df_shipments),
+    ("field_ops/crop_images",  df_images),
+    ("iot/sensor_readings",    df_sensors),
+    ("mobile/customer_events", df_events),
 ]
 
-print(f"\n{'Tabla':<35} {'Registros':>10}   {'Última ingesta'}")
-print("─" * 80)
-
-for table in table_names:
-    fqn = f"{env.bronze_catalog}.{env.bronze_schema}.{table}"
-    try:
-        df = spark.read.table(fqn)
-        count = df.count()
-        last = df.agg(F.max("_ingested_at")).collect()[0][0]
-        print(f"{table:<35} {count:>10}   {last}")
-    except Exception as e:
-        print(f"{table:<35}        ❌   {str(e)[:60]}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 8. Ejemplos de queries SQL sobre Bronze
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### 8.1 Últimos pedidos ingestados
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT order_id, customer_id, total_amount, ordered_at, _ingested_at
-# MAGIC FROM workspace.bronze.ecommerce__sales_orders
-# MAGIC ORDER BY _ingested_at DESC
-# MAGIC LIMIT 10;
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### 8.2 Sensores IoT — temperatura media por zona
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   field_zone,
-# MAGIC   COUNT(*) AS lecturas,
-# MAGIC   ROUND(AVG(temperature), 2) AS temp_media,
-# MAGIC   ROUND(AVG(humidity), 2) AS humedad_media
-# MAGIC FROM workspace.bronze.iot__sensor_readings
-# MAGIC GROUP BY field_zone
-# MAGIC ORDER BY lecturas DESC;
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### 8.3 Eventos de cliente — distribución por tipo y plataforma
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   event_type,
-# MAGIC   platform,
-# MAGIC   COUNT(*) AS eventos
-# MAGIC FROM workspace.bronze.mobile__customer_events
-# MAGIC GROUP BY event_type, platform
-# MAGIC ORDER BY event_type, eventos DESC;
+print(f"\n{'Dataset':<30} {'Registros':>10}   {'Última ingesta'}")
+print("─" * 75)
+for name, df in datasets_info:
+    count = df.count()
+    last = df.agg(F.max("_ingested_at")).collect()[0][0]
+    print(f"{name:<30} {count:>10}   {last}")

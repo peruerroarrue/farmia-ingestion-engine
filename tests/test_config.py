@@ -91,21 +91,6 @@ class TestEnvironment:
         assert env.kafka_bootstrap_servers is None
         assert env.schema_registry_url is None
 
-    def test_bronze_catalog_schema_default_none(self):
-        env = Environment(landing_path="/l", bronze_path="/b")
-        assert env.bronze_catalog is None
-        assert env.bronze_schema is None
-
-    def test_bronze_catalog_schema_from_dict(self):
-        env = _build_environment({
-            "landing_path": "/l",
-            "bronze_path": "/b",
-            "bronze_catalog": "workspace",
-            "bronze_schema": "bronze",
-        })
-        assert env.bronze_catalog == "workspace"
-        assert env.bronze_schema == "bronze"
-
     def test_kafka_spark_opts_builds_correctly(self):
         env = Environment(
             landing_path="/l", raw_path="/r", bronze_path="/b",
