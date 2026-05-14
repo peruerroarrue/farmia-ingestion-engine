@@ -102,8 +102,8 @@ farmia-ingestion-engine/
 │   └── 04_run_tests.py          # Ejecuta tests de integración
 ├── tests/
 │   ├── conftest.py          # Fixtures compartidas (SparkSession, datos de prueba)
-│   ├── test_config.py       # Tests unitarios de config y environment (21 tests)
-│   ├── test_engine.py       # Tests unitarios de IngestionResult/Error (7 tests)
+│   ├── test_config.py       # Tests unitarios de config y environment (23 tests)
+│   ├── test_engine.py       # Tests unitarios de engine y writer (10 tests)
 │   └── test_batch_reader.py # Tests de integración de BatchReader (9 tests)
 ├── pyproject.toml
 └── README.md
@@ -135,6 +135,23 @@ El mismo `BronzeWriter` sirve para batch y streaming: un único patrón
 La capa Landing actúa como archivo inmutable de los ficheros originales —
 no se modifican ni se mueven tras procesarse, lo que mantiene la trazabilidad
 y permite reprocesar Bronze en cualquier momento.
+
+Tras cada ingesta exitosa, el motor registra el dataset como **tabla externa
+de Unity Catalog** (`workspace.bronze.<datasource>__<dataset>`). El dato sigue
+viviendo en el path del Volume (ownership de la capa Landing/Bronze), pero
+queda consultable desde el SQL Editor:
+
+```sql
+SELECT * FROM workspace.bronze.ecommerce__sales_orders LIMIT 10;
+
+SELECT _datasource, COUNT(*) AS total
+FROM workspace.bronze.iot__sensor_readings
+GROUP BY _datasource;
+```
+
+El registro se controla con los campos `bronze_catalog` y `bronze_schema` del
+`Environment`. Si no se especifican (caso de tests locales sin metastore),
+el motor se salta el registro sin error.
 
 ### Manejo de errores
 
@@ -304,7 +321,7 @@ Salida esperada:
 pytest tests/ -v --timeout=120
 ```
 
-Salida esperada: **37 passed**
+Salida esperada: **42 passed**
 
 ---
 
@@ -318,7 +335,7 @@ El motor está diseñado para funcionar tanto en Databricks Serverless Free Edit
 - **Avro batch sí funciona** — `mobile/customer_events` se genera en Avro en Landing y `BatchReader` lo procesa correctamente.
 
 ### Tests
-Los tests unitarios (`test_config.py` 21 tests + `test_engine.py` 7 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
+Los tests unitarios (`test_config.py` 23 tests + `test_engine.py` 10 tests) y de integración con Spark (`test_batch_reader.py`, 9 tests) se ejecutan en local. Los tests de streaming (Kafka) y escritura Delta se validan mediante la ejecución end-to-end del motor en Databricks.
 
 ### Troubleshooting
 

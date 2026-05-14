@@ -9,7 +9,9 @@ en Databricks vía el notebook 02_run_engine.py.
 """
 
 import pytest
+from src.config import Environment, DatasetConfig, BatchSourceConfig
 from src.engine import IngestionResult, IngestionError
+from src.writer import BronzeWriter
 
 
 # ---------------------------------------------------------------------------
@@ -68,3 +70,31 @@ class TestIngestionError:
                 raise IngestionError("envuelta") from e
         except IngestionError as wrapped:
             assert wrapped.__cause__ is original
+
+
+# ---------------------------------------------------------------------------
+# BronzeWriter.register_table — comportamiento sin Spark real
+# ---------------------------------------------------------------------------
+
+class TestBronzeWriterRegisterTable:
+
+    def _dataset(self) -> DatasetConfig:
+        return DatasetConfig(
+            datasource="ecommerce",
+            dataset="sales_orders",
+            source=BatchSourceConfig(format="json"),
+        )
+
+    def test_returns_none_when_catalog_not_set(self):
+        env = Environment(landing_path="/l", bronze_path="/b")  # sin catalog/schema
+        writer = BronzeWriter(spark=None, env=env)  # spark no se usa en este path
+        assert writer.register_table(self._dataset()) is None
+
+    def test_returns_none_when_only_catalog_set(self):
+        env = Environment(landing_path="/l", bronze_path="/b", bronze_catalog="ws")
+        writer = BronzeWriter(spark=None, env=env)
+        assert writer.register_table(self._dataset()) is None
+
+    def test_table_name_format(self):
+        # Convención: {datasource}__{dataset}
+        assert BronzeWriter._table_name(self._dataset()) == "ecommerce__sales_orders"

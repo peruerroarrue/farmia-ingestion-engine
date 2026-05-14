@@ -10,6 +10,7 @@ Clase
 """
 
 import logging
+from typing import Optional
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.streaming import StreamingQuery
 
@@ -66,7 +67,41 @@ class BronzeWriter:
         return writer.start(bronze_path)
 
     # ------------------------------------------------------------------
-    # Rutas auxiliares
+    # Registro de tabla externa en Unity Catalog
+    # ------------------------------------------------------------------
+
+    def register_table(self, dataset: DatasetConfig) -> Optional[str]:
+        """
+        Registra el path de Bronze como tabla externa en Unity Catalog,
+        permitiendo consultar el dataset desde el SQL Editor con:
+
+            SELECT * FROM <catalog>.<schema>.<datasource>__<dataset>
+
+        Devuelve el FQN de la tabla, o None si no hay catalog/schema
+        configurado en el Environment (caso de tests locales sin UC).
+
+        Es idempotente: usa CREATE TABLE IF NOT EXISTS, así que se puede
+        ejecutar tras cada ingesta sin efecto secundario si la tabla ya existe.
+        """
+        catalog = self.env.bronze_catalog
+        schema = self.env.bronze_schema
+        if not catalog or not schema:
+            return None
+
+        table = self._table_name(dataset)
+        fqn = f"{catalog}.{schema}.{table}"
+        path = self._bronze_path(dataset)
+
+        # Asegura que el schema existe — necesario la primera vez en Free Edition
+        self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+        # Tabla externa: el data sigue en el path del Volume, UC solo guarda el puntero
+        self.spark.sql(
+            f"CREATE TABLE IF NOT EXISTS {fqn} USING DELTA LOCATION '{path}'"
+        )
+        return fqn
+
+    # ------------------------------------------------------------------
+    # Rutas y nombres auxiliares
     # ------------------------------------------------------------------
 
     def _bronze_path(self, dataset: DatasetConfig) -> str:
@@ -74,3 +109,7 @@ class BronzeWriter:
 
     def _checkpoint_path(self, dataset: DatasetConfig) -> str:
         return f"{self.env.bronze_path}/{dataset.datasource}/{dataset.dataset}_checkpoint"
+
+    @staticmethod
+    def _table_name(dataset: DatasetConfig) -> str:
+        return f"{dataset.datasource}__{dataset.dataset}"

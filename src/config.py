@@ -15,7 +15,9 @@ class Environment:
     """
     landing_path: str           # Origen de los ficheros crudos
     bronze_path: str            # Tablas Delta de destino
-    raw_path: Optional[str] = None  # Reservado (no usado en la arquitectura actual)
+    bronze_catalog: Optional[str] = None  # Catálogo UC donde registrar Bronze (ej: "workspace")
+    bronze_schema: Optional[str] = None   # Schema UC donde registrar Bronze (ej: "bronze")
+    raw_path: Optional[str] = None        # Reservado (no usado en la arquitectura actual)
     kafka_bootstrap_servers: Optional[str] = None
     kafka_security_protocol: Optional[str] = None
     kafka_sasl_mechanism: Optional[str] = None

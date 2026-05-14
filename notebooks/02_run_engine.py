@@ -220,3 +220,33 @@ for name, df in datasets_info:
     count = df.count()
     last = df.agg(F.max("_ingested_at")).collect()[0][0]
     print(f"{name:<30} {count:>10} {last}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 7. Tablas registradas en Unity Catalog
+# MAGIC
+# MAGIC El motor registra cada dataset como tabla externa en
+# MAGIC `{bronze_catalog}.{bronze_schema}.{datasource}__{dataset}`.
+# MAGIC A partir de aquí las tablas son consultables desde el SQL Editor.
+
+# COMMAND ----------
+
+if env.bronze_catalog and env.bronze_schema:
+    display(spark.sql(
+        f"SHOW TABLES IN {env.bronze_catalog}.{env.bronze_schema}"
+    ))
+else:
+    print("ℹ️  bronze_catalog/bronze_schema no configurados — sin registro UC")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Ejemplo de consulta SQL sobre Bronze
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT _datasource, COUNT(*) AS total_registros, MAX(_ingested_at) AS ultima_ingesta
+# MAGIC FROM workspace.bronze.ecommerce__sales_orders
+# MAGIC GROUP BY _datasource
